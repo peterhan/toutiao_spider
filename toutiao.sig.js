@@ -9,5 +9,6 @@ Function(function (t) {
   }
 ]);
 
-var sigc = TAC.sign('{need_replace}')
-sigc
+//var sigc = TAC.sign('{need_replace}')
+//sigc
+TAC.sign

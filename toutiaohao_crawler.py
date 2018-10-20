@@ -12,8 +12,8 @@ UA_ST = '''Mozilla/5.0 (Windows NT 6.1; WOW64) AppleWebKit/537.36 (KHTML, like G
 UA_js = '''var navigator = {};
 navigator["userAgent"] = "%s";
 '''%UA_ST
-headers = {"User-Agent":UA_ST}    
-
+HEADERS = {"User-Agent":UA_ST}    
+SIG_JS_OBJ = False
 DATE_FORMAT='%Y-%m-%d %H:%M:%S'
 
 def dump_json(jo,i=None,e=None):
@@ -70,12 +70,15 @@ def getASCP():
     
 def get_signature(uid,maxhot='0'):
     global UA_js
-    js=open('toutiao.sig.js','rb').read().decode('utf8')
-    js = UA_js +'\n'+js.replace(u'{need_replace}',uid  + "" +maxhot)    
-    ctxt = PyV8.JSContext()
-    ctxt.enter()
-    vl5x = ctxt.eval(js)
-    return vl5x
+    global SIG_JS_OBJ
+    if not SIG_JS_OBJ:
+        js = open('toutiao.sig.js','rb').read().decode('utf8')
+        js = UA_js +'\n'+js
+        ctxt = PyV8.JSContext()  
+        ctxt.enter()
+        SIG_JS_OBJ = ctxt.eval(js)
+        #ctxt.leave()
+    return SIG_JS_OBJ(uid+''+maxhot)
     
 def test_encrypt():
     AS,CP=getASCP()
@@ -99,9 +102,9 @@ def get_index_page(cat='news_car',maxhot = '1539912409'):
     cookies={'uuid':'w:c1554d99c34047cc8e89fd','tt_webid':'6612754979269297671'}   
     url='https://www.toutiao.com/api/pc/feed/?category={cat}&utm_source=toutiao&widen=1&max_behot_time={maxhot}&max_behot_time_tmp={maxhot}&tadrequire=true&as={_as}&cp={cp}&_signature={sig}'.format(**data)
     print url
-    rp = requests.get(url,headers=headers,cookies=cookies)
+    rp = requests.get(url,headers=HEADERS,cookies=cookies)
     jo = rp.json()
-    open('dbg.js','w').write(dump_json(jo))
+    # open('dbg.js','w').write(dump_json(jo))
     return jo
 
 def extract_index_user_list(jo):
@@ -115,7 +118,7 @@ def get_uid_page(uid):
     # print uj.keys()
     data = get_veri_data(uid)        
     url='https://www.toutiao.com/c/user/article/?page_type=1&user_id={uid}&max_behot_time=0&count=200&as={_as}&cp={cp}&_signature={sig}'.format(**data)
-    res = requests.get(url,headers=headers)
+    res = requests.get(url,headers=HEADERS)
     print url
     jo = res.json()
     jo.update({'uid':uid,'sig_data':data})
@@ -137,9 +140,8 @@ def user_page_crawl():
         res.append(dump_json(jo,i=None,e='utf8'))    
     
     
-def index_crawl():
-    
-    pool = Pool(5)
+def index_crawl():    
+    pool = Pool(8)
     cols='news_finance,news_entertainment,news_tech,news_game,news_sports,news_travel,news_car,news_hot,news_military,news_fashion,news_history,news_world,news_discovery,news_regime,news_baby,news_essay'.split(',')
     car_cols='car_new_arrival,SUV,car_guide,car_usage'
     idxd = sqlitedict.SqliteDict('./idx_db.db', autocommit=True)
