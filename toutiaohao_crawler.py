@@ -8,13 +8,13 @@ import sqlitedict
 from gevent.pool import Pool
 
 UA_ST = '''Mozilla/5.0 (Windows NT 10.0; Win64; x64; rv:62.0) Gecko/20100101 Firefox/62.0'''
-UA_ST = '''Mozilla/5.0 (Windows NT 6.1; WOW64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/49.0.2623.87 Safari/537.36'''
 UA_js = '''var navigator = {};
 navigator["userAgent"] = "%s";
 '''%UA_ST
-HEADERS = {"User-Agent":UA_ST}    
 SIG_JS_OBJ = False
 DATE_FORMAT='%Y-%m-%d %H:%M:%S'
+HEADERS = {"User-Agent":UA_ST}    
+COOKIES={'uuid':'w:c1554d99c34047cc8e89fd','tt_webid':'6614290627788719619'}  
 
 def dump_json(jo,i=None,e=None):
     if e is None:
@@ -95,16 +95,17 @@ def get_veri_data(uid,maxhot='0'):
 
 
     
-def get_index_page(cat='news_car',maxhot = '1539912409'):    
+def get_index_page(cat='news_car',maxhot = '1539912409'): 
+    global COOKIES
+    global HEADERS
     data =  get_veri_data('', maxhot=maxhot) 
     data['cat'] = cat
-    data['maxhot'] = maxhot
-    cookies={'uuid':'w:c1554d99c34047cc8e89fd','tt_webid':'6612754979269297671'}   
+    data['maxhot'] = maxhot     
     url='https://www.toutiao.com/api/pc/feed/?category={cat}&utm_source=toutiao&widen=1&max_behot_time={maxhot}&max_behot_time_tmp={maxhot}&tadrequire=true&as={_as}&cp={cp}&_signature={sig}'.format(**data)
     print url
-    rp = requests.get(url,headers=HEADERS,cookies=cookies)
+    rp = requests.get(url,headers=HEADERS,cookies=COOKIES)
     jo = rp.json()
-    # open('dbg.js','w').write(dump_json(jo))
+    open('dbg.js','w').write(dump_json(jo))
     return jo
 
 def extract_index_user_list(jo):
@@ -114,7 +115,8 @@ def extract_index_user_list(jo):
         print ( '[%s][%s][%s]'%(d.get('title',''),d.get('source'),d.get('chinese_tag') )).encode('gbk','ignore')
     return ilist # print dump_json()
     
-def get_uid_page(uid):    
+def get_uid_page(uid):
+    global HEADERS
     # print uj.keys()
     data = get_veri_data(uid)        
     url='https://www.toutiao.com/c/user/article/?page_type=1&user_id={uid}&max_behot_time=0&count=200&as={_as}&cp={cp}&_signature={sig}'.format(**data)
@@ -155,12 +157,12 @@ def index_crawl():
         except Exception as e:
             print e.message,col
         
-    for col in cols[:]:
-        for i in range(20):
+    for col in cols[:1]:
+        for i in range(1):
             pool.spawn(fetch_one_col, col,i,idxd)
     pool.join()
     idxd.close()
         
 if __name__=='__main__':
-    # index_crawl()
-    user_page_crawl()
+    index_crawl()
+    # user_page_crawl()
