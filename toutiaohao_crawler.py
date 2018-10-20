@@ -105,7 +105,7 @@ def get_index_page(cat='news_car',maxhot = '1539912409'):
     print url
     rp = requests.get(url,headers=HEADERS,cookies=COOKIES)
     jo = rp.json()
-    open('dbg.js','w').write(dump_json(jo))
+    #open('debug.js','w').write(dump_json(jo))
     return jo
 
 def extract_index_user_list(jo):
@@ -129,17 +129,44 @@ def get_uid_page(uid):
     return jo
     # break
 
+def stat_feed():
+    from collections import Counter
+    cnt=Counter()
+    idxd = sqlitedict.SqliteDict('./idx_db.db')
+    upgd = sqlitedict.SqliteDict('./upg_db.db')
+    for k,idx_js in upgd.items():
+        print dump_json(k.decode('utf8')),idx_js.keys()
+    for k,idx_js in idxd.items():        
+        uj = idx_js
+        # cnt[dump_json([uj['source'],uj['api_meta'][0]])]+=1
+        cnt[dump_json([uj['api_meta'][0]])]+=1
+        # cnt[dump_json([uj['api_meta']])]+=1
+    for k,v in cnt.most_common(3):
+        print k,v
+    print 'category_cnt',len(cnt),'item_cnt',len(idxd)
+        
 def user_page_crawl():
     res = []
+    pool = Pool(8)
     idxd = sqlitedict.SqliteDict('./idx_db.db')
-    for k,idx_js in idxd.items():
-        print k
-        user_list = extract_index_user_list(idx_js)
-        continue
-    
-        obj=json.loads(row)
-        jo = get_uid_page(obj['url'].split('/')[-2])
-        res.append(dump_json(jo,i=None,e='utf8'))    
+    upgd = sqlitedict.SqliteDict('./upg_db.db',autocommit=True)
+    def get_upg(uid,upgd):
+        jo = get_uid_page(uid)
+        upgd[source] = jo
+        print dump_json(len(jo['data']),i=2)
+        
+    for k,idx_js in idxd.items():        
+        rj = idx_js
+        source = rj['source']
+        print k,dump_json(source) 
+        # print dump_json(rj,i=2)
+        # print rj.keys()
+        try:
+            uid = rj['media_url'].split('/')[-2]
+        except:
+            continue
+        pool.spawn(get_upg,uid,upgd)
+    pool.join()
     
     
 def index_crawl():    
@@ -152,17 +179,20 @@ def index_crawl():
             maxhot = str(ts2unix(get_date())-i*2000)            
             jo = get_index_page(col, maxhot)
             ilist = extract_index_user_list(jo)
-            key = 'idx_%s_%s'%(col,maxhot)
-            idxd[key] = jo
+            for art in jo['data']:
+                key = 'idx_%s'%(art['item_id'])
+                art['api_meta']=[col,maxhot]
+                idxd[key] = art
         except Exception as e:
             print e.message,col
         
-    for col in cols[:1]:
-        for i in range(1):
+    for col in cols[:]:
+        for i in range(0,90):
             pool.spawn(fetch_one_col, col,i,idxd)
     pool.join()
     idxd.close()
         
 if __name__=='__main__':
-    index_crawl()
+    # index_crawl()
+    stat_feed()
     # user_page_crawl()
