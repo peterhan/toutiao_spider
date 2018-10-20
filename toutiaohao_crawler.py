@@ -1,8 +1,11 @@
 import requests
 import json
+import os
 import math,hashlib
 import datetime,time
 import PyV8
+import sqlitedict
+from gevent.pool import Pool
 
 UA_ST = '''Mozilla/5.0 (Windows NT 10.0; Win64; x64; rv:62.0) Gecko/20100101 Firefox/62.0'''
 UA_ST = '''Mozilla/5.0 (Windows NT 6.1; WOW64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/49.0.2623.87 Safari/537.36'''
@@ -13,6 +16,11 @@ headers = {"User-Agent":UA_ST}
 
 DATE_FORMAT='%Y-%m-%d %H:%M:%S'
 
+def dump_json(jo,i=None,e=None):
+    if e is None:
+        e =  'gbk' if os.name=='nt' else'utf8'
+    return json.dumps(jo,ensure_ascii=False,indent=i).encode(e,'ignore')  
+    
 def get_date(fmt=DATE_FORMAT,base= datetime.datetime.now(), isobj=False, **kwargs ):
     i_str2date=lambda str_date,fmt: datetime.datetime.fromtimestamp(time.mktime(time.strptime(str_date,fmt)))
     if type(base)==str:
@@ -82,10 +90,9 @@ def get_veri_data(uid,maxhot='0'):
     sig =get_signature(uid,maxhot)
     return {'uid':uid,'_as':_as,'cp':cp,'sig':sig}
 
-def dump_json(jo,i=None,e='gbk'):
-    return json.dumps(jo,ensure_ascii=False,indent=i).encode(e,'ignore')  
+
     
-def get_index(cat='news_car',maxhot = '1539912409'):    
+def get_index_page(cat='news_car',maxhot = '1539912409'):    
     data =  get_veri_data('', maxhot=maxhot) 
     data['cat'] = cat
     data['maxhot'] = maxhot
@@ -95,15 +102,14 @@ def get_index(cat='news_car',maxhot = '1539912409'):
     rp = requests.get(url,headers=headers,cookies=cookies)
     jo = rp.json()
     open('dbg.js','w').write(dump_json(jo))
-    sl = []
-    for d in jo['data']:
-        # print d.keys()
-        # print d
-        sl.append(dump_json({'src':d.get('source'),'url':d.get('media_url')} ,i=None,e='utf8'))
-        print d.get('title','').encode('gbk','ignore')
-        # print dump_json()
-    open('source_list.txt','w').write('\n'.join(sl))
+    return jo
 
+def extract_index_user_list(jo):
+    ilist = []
+    for d in jo['data']:
+        # print d.keys()_url')})
+        print ( '[%s][%s][%s]'%(d.get('title',''),d.get('source'),d.get('chinese_tag') )).encode('gbk','ignore')
+    return ilist # print dump_json()
     
 def get_uid_page(uid):    
     # print uj.keys()
@@ -118,23 +124,41 @@ def get_uid_page(uid):
     return jo
     # break
 
-def user_crawl():
+def user_page_crawl():
     res = []
-    for row in open('source_list.txt'):
+    idxd = sqlitedict.SqliteDict('./idx_db.db')
+    for k,idx_js in idxd.items():
+        print k
+        user_list = extract_index_user_list(idx_js)
+        continue
+    
         obj=json.loads(row)
         jo = get_uid_page(obj['url'].split('/')[-2])
-        res.append(dump_json(jo,i=None,e='utf8'))
-    open('upage.txt','a').write('\n'.join(res))
-        
+        res.append(dump_json(jo,i=None,e='utf8'))    
+    
     
 def index_crawl():
-    cols='news_finance,news_entertainment,news_travel,news_car,car_new_arrival,SUV,car_guide,car_usage,news_hot'.split(',')
-    for col in cols[1:2]:
-        for i in range(10):
-            mh = str(ts2unix(get_date())-i*2000)
-            print mh
-            get_index(col, mh)
+    
+    pool = Pool(5)
+    cols='news_finance,news_entertainment,news_tech,news_game,news_sports,news_travel,news_car,news_hot,news_military,news_fashion,news_history,news_world,news_discovery,news_regime,news_baby,news_essay'.split(',')
+    car_cols='car_new_arrival,SUV,car_guide,car_usage'
+    idxd = sqlitedict.SqliteDict('./idx_db.db', autocommit=True)
+    def fetch_one_col(col,i,idxd):
+        try:
+            maxhot = str(ts2unix(get_date())-i*2000)            
+            jo = get_index_page(col, maxhot)
+            ilist = extract_index_user_list(jo)
+            key = 'idx_%s_%s'%(col,maxhot)
+            idxd[key] = jo
+        except Exception as e:
+            print e.message,col
+        
+    for col in cols[:]:
+        for i in range(20):
+            pool.spawn(fetch_one_col, col,i,idxd)
+    pool.join()
+    idxd.close()
         
 if __name__=='__main__':
     # index_crawl()
-    user_crawl()
+    user_page_crawl()
